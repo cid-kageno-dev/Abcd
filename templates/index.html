@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0a0b10">
+<title>TikTok Video Optimizer — Browser Edition</title>
+<style>
+:root{color-scheme:dark;--bg:#090a0f;--panel:#141720;--panel2:#10131b;--line:#292e3b;--text:#f3f5fa;--muted:#a1a9ba;--lime:#b7f56b;--red:#ffb0b0}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 10% 0%,#18211b 0,transparent 38%),var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+main{width:min(900px,100%);margin:auto;padding:30px 18px 60px}.eyebrow{color:var(--lime);font-size:.8rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}h1{font-size:clamp(2rem,7vw,3.5rem);line-height:1.04;letter-spacing:-.045em;margin:.5rem 0 1rem}h2{font-size:1.4rem;margin:0 0 .35rem}.lead{color:var(--muted);max-width:680px;margin-bottom:26px}.panel{background:linear-gradient(145deg,#151923,#10131a);border:1px solid var(--line);border-radius:26px;padding:24px;margin:18px 0;box-shadow:0 14px 40px #0002}.muted{color:var(--muted)}.drop{display:block;border:1px dashed #51596b;border-radius:18px;padding:22px;text-align:center;background:#0b0d13;cursor:pointer;margin:18px 0}.drop input{display:block;max-width:100%;margin:14px auto 0}.filelist{font-size:.92rem;color:var(--muted);overflow-wrap:anywhere}.controls{display:grid;grid-template-columns:1fr;gap:12px;margin-top:20px}label{font-weight:700;display:block;margin-bottom:7px}select,button{font:inherit;border-radius:15px;padding:14px 16px;border:1px solid var(--line)}select{background:#0c0f16;color:var(--text);width:100%}button{font-weight:800;cursor:pointer;background:var(--lime);color:#11160b;border-color:transparent}button.secondary{background:#252b38;color:var(--text);border-color:#363d4d}button:disabled{opacity:.45;cursor:not-allowed}.buttons{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.buttons button{flex:1;min-width:180px}.status{margin-top:14px;white-space:pre-wrap;overflow-wrap:anywhere}.error{color:var(--red)}.results{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:18px}.metric{border:1px solid var(--line);border-radius:16px;padding:15px;background:#11141c}.metric b{display:block;margin-bottom:5px}.metric span{color:var(--muted);overflow-wrap:anywhere}.downloads a{color:var(--lime);display:block;margin:8px 0;overflow-wrap:anywhere}.note{background:#191c25;border:1px solid #303644;border-radius:17px;padding:16px;color:#c7cbd5;margin-top:18px}.small{font-size:.88rem}.progress{height:7px;background:#292e3b;border-radius:99px;overflow:hidden;margin-top:14px}.progress>div{height:100%;width:0;background:var(--lime);transition:width .2s}
+@media(min-width:650px){.controls{grid-template-columns:1fr 1fr}.panel{padding:30px}}
+</style>
+</head>
+<body><main>
+<div class="eyebrow">Browser edition · no upload server</div>
+<h1>TikTok Video Optimizer</h1>
+<p class="lead">Analyze and compress videos directly on this device. Files are processed in your browser and are not uploaded to an application server.</p>
+
+<section class="panel">
+<h2>Video workspace</h2>
+<p class="muted">Select MP4, MOV, MKV, M4V or WebM files. Large files may require substantial memory and processing time.</p>
+<label class="drop" for="files">＋ Choose video files
+<input id="files" type="file" accept="video/mp4,video/quicktime,video/x-matroska,video/x-m4v,video/webm,.mp4,.mov,.mkv,.m4v,.webm" multiple>
+</label>
+<div id="filelist" class="filelist">No files selected.</div>
+<div class="controls">
+<div><label for="profile">Compression profile</label><select id="profile"><option value="18">High quality — CRF 18</option><option value="21" selected>Balanced — CRF 21</option><option value="24">Smaller file — CRF 24</option></select></div>
+<div><label for="audio">Audio</label><select id="audio"><option value="aac" selected>AAC audio (recommended)</option><option value="copy">Copy audio if compatible</option><option value="none">Remove audio</option></select></div>
+</div>
+<div class="buttons"><button id="analyze">Analyze videos</button><button id="optimize" class="secondary">Optimize &amp; download</button></div>
+<div class="progress"><div id="bar"></div></div><div id="status" class="status" role="status"></div>
+<div id="analysis" class="results"></div><div id="downloads" class="downloads"></div>
+<div class="note small">Re-encoding is not lossless. CRF 18 generally favors quality; CRF 24 generally favors smaller files. This tool does not claim to bypass TikTok’s server-side transcoding.</div>
+</section>
+<section class="panel"><h2>What you can verify</h2><p class="muted">Measurements are read from the selected file using FFmpeg in your browser, not estimated from the filename.</p><div class="results">
+<div class="metric"><b>▣ Resolution</b><span>Check 4K dimensions (3840 × 2160)</span></div>
+<div class="metric"><b>◷ Frame rate</b><span>Check whether source is approximately 60 FPS</span></div>
+<div class="metric"><b>↗ Bitrate</b><span>Inspect measured stream and container bitrate</span></div>
+<div class="metric"><b>◎ Privacy</b><span>Video bytes remain in this browser session</span></div>
+</div></section>
+<p class="muted small">First use downloads the FFmpeg WebAssembly engine from a public CDN. After that, processing happens locally in this browser tab. Keep this tab open while a job runs.</p>
+</main>
+<script type="module">
+import { FFmpeg } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js';
+import { toBlobURL } from 'https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js';
+
+const $ = id => document.getElementById(id);
+const filesInput = $('files');
+let ffmpeg = null, loaded = false, selected = [];
+const fmtBytes = n => { if(!Number.isFinite(n)) return 'Unknown'; const u=['B','KB','MB','GB']; let i=0; while(n>=1024&&i<u.length-1){n/=1024;i++} return `${n.toFixed(i?2:0)} ${u[i]}`; };
+function status(msg, error=false){$('status').textContent=msg;$('status').className='status'+(error?' error':'')}
+function escapeHtml(s){return s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function renderFiles(){selected=[...filesInput.files];$('filelist').textContent=selected.length?selected.map(f=>`${f.name} · ${fmtBytes(f.size)}`).join('\n'):'No files selected.';$('analysis').innerHTML='';$('downloads').innerHTML='';$('bar').style.width='0%';status('')}
+filesInput.addEventListener('change',renderFiles);
+async function engine(){
+ if(loaded)return;
+ status('Loading browser video engine… first load may take a moment.');
+ ffmpeg=new FFmpeg();
+ ffmpeg.on('log',({message})=>{if(message && /frame=|size=|time=/.test(message)) status(message.slice(-220));});
+ ffmpeg.on('progress',({progress})=>{$('bar').style.width=`${Math.max(0,Math.min(100,progress*100))}%`});
+ const base='https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+ await ffmpeg.load({coreURL:await toBlobURL(`${base}/ffmpeg-core.js`,'text/javascript'),wasmURL:await toBlobURL(`${base}/ffmpeg-core.wasm`,'application/wasm')});
+ loaded=true;
+}
+function parseProbe(text){
+ const lines=text.split(/\r?\n/), out={video:'Not detected',audio:'None detected',resolution:'Unknown',fps:'Unknown',bitrate:'Unknown',duration:'Unknown'};
+ for(const l of lines){
+  if(l.startsWith('codec_name=')) { if(out.video==='Not detected')out.video=l.slice(11); }
+  if(l.startsWith('width=')){const w=l.slice(6);out._w=Number(w)}
+  if(l.startsWith('height=')){const h=l.slice(7);out._h=Number(h)}
+  if(l.startsWith('r_frame_rate=')){const [a,b]=l.slice(13).split('/').map(Number);if(b)out.fps=(a/b).toFixed(3)+' FPS'}
+  if(l.startsWith('bit_rate=')&&l.slice(9)!=='N/A')out.bitrate=(Number(l.slice(9))/1000).toFixed(0)+' kb/s';
+  if(l.startsWith('duration='))out.duration=Number(l.slice(9)).toFixed(2)+' s';
+  if(l.startsWith('TAG:')){}
+ }
+ if(out._w&&out._h)out.resolution=`${out._w} × ${out._h}${out._w>=3840&&out._h>=2160?' · 4K or higher':''}`;
+ return out;
+}
+async function analyzeOne(file){
+ const input='input_'+Math.random().toString(36).slice(2)+'.'+(file.name.split('.').pop()||'mp4');
+ await ffmpeg.writeFile(input,new Uint8Array(await file.arrayBuffer()));
+ let text='';
+ try{
+  await ffmpeg.exec(['-hide_banner','-i',input,'-f','null','-'],15000);
+ }catch(e){ /* ffmpeg reports probe info via log; run a metadata query below */ }
+ // Use FFmpeg's info output, captured from logs.
+ let logs=[];
+ const listener=({message})=>logs.push(message);
+ ffmpeg.on('log',listener);
+ try{await ffmpeg.exec(['-i',input,'-f','null','-'],15000)}catch(e){}
+ // Also request compact stream metadata through ffprobe-like output where supported.
+ try{await ffmpeg.exec(['-i',input,'-vf','scale=1:1','-frames:v','1','-f','null','-'],15000)}catch(e){}
+ ffmpeg.off('log',listener);
+ text=logs.join('\n');
+ const video=text.match(/Video:\s*([^,\s]+)/i); const audio=text.match(/Audio:\s*([^,\s]+)/i);
+ const dim=text.match(/,\s*(\d{2,5})x(\d{2,5})[,\s]/); const fps=text.match(/([\d.]+)\s*fps/i);
+ const br=text.match(/bitrate:\s*([\d.]+\s*\w+\/s)/i); const dur=text.match(/Duration:\s*([\d:.]+)/i);
+ return {name:file.name,size:fmtBytes(file.size),video:video?.[1]||'Not detected',audio:audio?.[1]||'None detected',resolution:dim?`${dim[1]} × ${dim[2]}${Number(dim[1])>=3840&&Number(dim[2])>=2160?' · 4K or higher':''}`:'Unknown',fps:fps?`${fps[1]} FPS`:'Unknown',bitrate:br?.[1]||'Unknown',duration:dur?.[1]||'Unknown',input};
+}
+$('analyze').addEventListener('click',async()=>{
+ if(!selected.length)return status('Choose at least one video first.',true);
+ $('analyze').disabled=true;$('optimize').disabled=true;$('analysis').innerHTML='';$('downloads').innerHTML='';
+ try{await engine();const cards=[];for(let i=0;i<selected.length;i++){status(`Analyzing ${i+1}/${selected.length}: ${selected[i].name}`);const r=await analyzeOne(selected[i]);cards.push(r);$('bar').style.width=`${(i+1)/selected.length*100}%`;}
+ $('analysis').innerHTML=cards.map(r=>`<div class="metric"><b>${escapeHtml(r.name)}</b><span>Size: ${r.size}<br>Video: ${r.video}<br>Audio: ${r.audio}<br>Resolution: ${r.resolution}<br>Frame rate: ${r.fps}<br>Bitrate: ${r.bitrate}<br>Duration: ${r.duration}</span></div>`).join('');
+ status('Analysis complete.');}
+ catch(e){status(`Browser processing failed: ${e?.message||e}. Try a smaller file or a current Chrome browser.`,true)}
+ finally{$('analyze').disabled=false;$('optimize').disabled=false}
+});
+$('optimize').addEventListener('click',async()=>{
+ if(!selected.length)return status('Choose at least one video first.',true);
+ $('analyze').disabled=true;$('optimize').disabled=true;$('downloads').innerHTML='';
+ try{
+  await engine();const links=[];const crf=$('profile').value;const audio=$('audio').value;
+  for(let i=0;i<selected.length;i++){
+   const file=selected[i], ext='mp4', input='source_'+i+'.'+(file.name.split('.').pop()||'mp4'), output=`optimized_${i}.mp4`;
+   status(`Optimizing ${i+1}/${selected.length}: ${file.name}\nThis may take several minutes on mobile.`);
+   await ffmpeg.writeFile(input,new Uint8Array(await file.arrayBuffer()));
+   const args=['-i',input,'-map','0:v:0','-c:v','libx264','-preset','veryfast','-crf',crf,'-pix_fmt','yuv420p','-movflags','+faststart'];
+   if(audio==='none')args.push('-an');else if(audio==='copy')args.push('-c:a','copy');else args.push('-c:a','aac','-b:a','128k');
+   args.push('-y',output);
+   await ffmpeg.exec(args,3600000);
+   const data=await ffmpeg.readFile(output);
+   const blob=new Blob([data],{type:'video/mp4'});const url=URL.createObjectURL(blob);
+   const name=file.name.replace(/\.[^.]+$/,'')+'_optimized.mp4';
+   links.push({url,name,size:fmtBytes(blob.size),original:file.size});
+   try{await ffmpeg.deleteFile(input);await ffmpeg.deleteFile(output)}catch{}
+  }
+  $('downloads').innerHTML=links.map(x=>`<div class="metric"><b>${escapeHtml(x.name)}</b><span>${x.size} · original ${fmtBytes(x.original)}</span><a href="${x.url}" download="${escapeHtml(x.name)}">Download optimized MP4</a></div>`).join('');
+  status('Optimization complete. Download each result above.');
+ }catch(e){status(`Optimization failed: ${e?.message||e}. The browser/device may not have enough memory or the codec may be unsupported.`,true)}
+ finally{$('analyze').disabled=false;$('optimize').disabled=false}
+});
+</script>
+</body></html>
